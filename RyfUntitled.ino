@@ -1,4 +1,12 @@
-#include "rainbow.gif.h"
+//#include "rainbow.gif.h"
+//#include "gear1.gif.h"
+//#include "gear2.gif.h"
+//#include "robot.gif.h"
+//#include "cookiemonster.gif.h"
+//#include "ninja.gif.h"
+#include "mew.gif.h"
+
+#include <avr/pgmspace.h>
 
 #define hall_input_pin 4
 
@@ -69,7 +77,7 @@ void loop() {
   currVal = digitalRead(hall_input_pin);
 
   if (currVal == LOW && prevVal == HIGH) { //positive hall detection
-
+    
 //    counter++;
 
     angle = 0; //assuming the sensor is placed at clock position 3pm, else just do an offset
@@ -88,6 +96,7 @@ void loop() {
   prevVal = currVal;
 
   update_leds();
+  //update_leds_test();
 
   update_motor();
 }
@@ -96,6 +105,7 @@ void calc_rpm() {
 /*
  * calculates the rpm based on subsequent hall detections
  */
+ 
   if (!isInit) {
 
     isInit = true;
@@ -123,7 +133,7 @@ void calc_angle() {
        
         timeInterval = millis() - prevReadTime;
 
-        angle += ( timeInterval / OneRevTimeInterval ) * 2*PI;
+        angle = ( (float)timeInterval / oneRevTimeInterval ) * 2*PI;
     }
 }
 
@@ -144,9 +154,10 @@ void check_idle() {
 }
 
 void check_trigger() { 
-    /*
-     * check whether to trigger installation
-     */
+/*
+ * check whether to trigger installation
+ */
+ 
   if (!isIdle && isInit && !isTriggered && millis() - timeInitialised > TRIGGERINTERVAL) {
 
     isTriggered = true;
@@ -189,27 +200,29 @@ void init_LEDs() {
   }
 }
 
-/*
-void update_leds() { //brightness adjusts according to RPM
 
+void update_leds_test() { 
+/*
+ * test for brightness adjusting according to RPM
+ */
   int brightLevel = map(rpm, 0, 500, 0, 31);
 
   ledStrip.write(colors, ledCount, brightLevel);
 }
-*/
+
 
 void update_leds() {
-    /*
-     * light painting based on Jacky's algorithm
-     */
-
+/*
+ * light painting based on Jacky's algorithm
+ */
     draw_line(angle, ledCount, 16); //half brightness, 24 LEDs
 }
 
+
 void init_motor() {
-    /*
-     * 12 second start up routine for motor controller
-     */
+/*
+ * 12 second start up routine for motor controller
+ */
     progStartTime = millis();
 
     while ( millis() - progStartTime < 1000 ) {
@@ -222,9 +235,9 @@ void init_motor() {
 }
 
 void update_motor() {
-    /*
-     * tells motor whether to go faster or not
-     */
+/*
+ * tells motor whether to go faster or not
+ */
     if (isTriggered && !isIdle && isInit) {
         analogWrite(motor_pin, 1023); //5V full speed
     } else {
@@ -233,9 +246,9 @@ void update_motor() {
 }
 
 void draw_line(float angle, int num_leds, int brightness) {
-    /*
-     * light painting based on one strip and the rpm 
-     */
+/*
+ * light painting based on one strip and the rpm 
+ */
 	static const int NUM_CHANNELS = 3;
 	rgb_color leds[num_leds];
   
