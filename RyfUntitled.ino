@@ -20,6 +20,14 @@
 
 #define motor_pin A0
 
+#define LEN(x) (sizeof(x) / sizeof(x[0]))
+
+// Settings
+static const float OFFSET_ANGLE       = 0;
+static const int   NUM_STRIPS         = 3;
+static const int   NUM_LEDS_PER_STRIP = 24;
+static const int   BRIGHTNESS         = 32; // 0 - 255
+
 //Hall sensor
 int counter; //for testing only
 long prevReadTime, //previous hall detection time
@@ -217,7 +225,13 @@ void update_leds() {
 /*
  * light painting based on Jacky's algorithm
  */
-    draw_line(angle, ledCount, 16); //half brightness, 24 LEDs
+ 	const float ANGLE_BETWEEN_STRIPS = 2 * PI / NUM_STRIPS;
+ 	float angles[NUM_STRIPS];
+
+	for (int i = 0; i < NUM_STRIPS; i++)
+		angles[NUM_STRIPS] = angle + i * ANGLE_BETWEEN_STRIPS;
+
+	draw_line(&angles);
 }
 
 
@@ -247,22 +261,27 @@ void update_motor() {
     }
 }
 
-void draw_line(float angle, int num_leds, int brightness) {
+void draw_line(float (*angles)[NUM_STRIPS]) {
 /*
  * light painting based on one strip and the rpm 
  */
 	static const int NUM_CHANNELS = 3;
-	rgb_color leds[num_leds];
-  
-	for (int i = 0; i < num_leds; i++) {
-		int x = num_leds * 0.5f + cos(angle) * i * 0.5f;
-		int y = num_leds * 0.5f + sin(angle) * i * 0.5f;
-		int gif_index = (x + y * num_leds) * NUM_CHANNELS;
-        leds[i].red   = pgm_read_byte_near(&gif[gif_index + 0]);
-        leds[i].green = pgm_read_byte_near(&gif[gif_index + 1]);
-        leds[i].blue  = pgm_read_byte_near(&gif[gif_index + 2]);
-		//memcpy(&leds[led_index], &gif[gif_index], NUM_CHANNELS);
+	rgb_color leds[NUM_LEDS_PER_STRIP * NUM_STRIPS];
+
+	for (int i = 0; i < LEN(angles); i++) {
+		const float angle = (*angles)[i];
+
+		for (int j = 0; j < NUM_LEDS_PER_STRIP; j++) {
+			const int x = NUM_LEDS_PER_STRIP * 0.5f + cos(angle) * j * 0.5f;
+			const int y = NUM_LEDS_PER_STRIP * 0.5f + sin(angle) * j * 0.5f;
+			const int gif_offset_index = i * NUM_LEDS_PER_STRIP;
+			const int gif_index = gif_offset_index + (x + y * NUM_LEDS_PER_STRIP) * NUM_CHANNELS;
+
+			leds[j].red   = pgm_read_byte_near(&gif[gif_index + 0]);
+			leds[j].green = pgm_read_byte_near(&gif[gif_index + 1]);
+			leds[j].blue  = pgm_read_byte_near(&gif[gif_index + 2]);
+		}
 	}
 
-	ledStrip.write(leds, num_leds, brightness);
+	ledStrip.write(leds, NUM_LEDS_PER_STRIP * NUM_STRIPS, BRIGHTNESS);
 }
