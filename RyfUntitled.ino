@@ -18,6 +18,7 @@
 
 #include <SoftwareSerial.h> //for communicating with the ESP8266
 
+#define HIRES
 #define motor_pin A0
 
 #define LEN(x) (sizeof(x) / sizeof(x[0]))
@@ -261,6 +262,30 @@ void update_motor() {
     }
 }
 
+
+#if defined(HIRES)
+
+void draw_line(float (*angles)[NUM_STRIPS]) {
+	static const int NUM_CHANNELS = 3;
+	rgb_color leds[NUM_LEDS_PER_STRIP * NUM_STRIPS];
+
+	for (int i = 0; i < LEN(angles); i++) {
+		const int angle = (int) (*angles)[i];
+
+		for (int j = 0; j < NUM_LEDS_PER_STRIP; j++) {
+			const int gif_index = (angle * NUM_LEDS_PER_STRIP + j) * NUM_CHANNELS;
+
+			leds[j].red   = pgm_read_byte_near(&gif[gif_index + 0]);
+			leds[j].green = pgm_read_byte_near(&gif[gif_index + 1]);
+			leds[j].blue  = pgm_read_byte_near(&gif[gif_index + 2]);
+		}
+	}
+
+	ledStrip.write(leds, NUM_LEDS_PER_STRIP * NUM_STRIPS, BRIGHTNESS);
+}
+
+#else
+
 void draw_line(float (*angles)[NUM_STRIPS]) {
 /*
  * light painting based on one strip and the rpm 
@@ -274,8 +299,7 @@ void draw_line(float (*angles)[NUM_STRIPS]) {
 		for (int j = 0; j < NUM_LEDS_PER_STRIP; j++) {
 			const int x = NUM_LEDS_PER_STRIP * 0.5f + cos(angle) * j * 0.5f;
 			const int y = NUM_LEDS_PER_STRIP * 0.5f + sin(angle) * j * 0.5f;
-			const int gif_offset_index = i * NUM_LEDS_PER_STRIP;
-			const int gif_index = gif_offset_index + (x + y * NUM_LEDS_PER_STRIP) * NUM_CHANNELS;
+			const int gif_index = (x + y * NUM_LEDS_PER_STRIP) * NUM_CHANNELS;
 
 			leds[j].red   = pgm_read_byte_near(&gif[gif_index + 0]);
 			leds[j].green = pgm_read_byte_near(&gif[gif_index + 1]);
@@ -285,3 +309,5 @@ void draw_line(float (*angles)[NUM_STRIPS]) {
 
 	ledStrip.write(leds, NUM_LEDS_PER_STRIP * NUM_STRIPS, BRIGHTNESS);
 }
+
+#endif
