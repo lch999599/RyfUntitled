@@ -23,11 +23,16 @@
 
 #define LEN(x) (sizeof(x) / sizeof(x[0]))
 
+// Strip directions
+static const int OUTWARD = 0;
+static const int INWARD = 0;
+
 // Settings
 static const float OFFSET_ANGLE       = 0;
 static const int   NUM_STRIPS         = 3;
 static const int   NUM_LEDS_PER_STRIP = 24;
 static const int   BRIGHTNESS         = 32; // 0 - 255
+static const int   STRIP_DIRECTIONS[NUM_STRIPS] = { OUTWARD, INWARD, OUTWARD };
 
 //Hall sensor
 int counter; //for testing only
@@ -297,6 +302,10 @@ void draw_line(float (*angles)[NUM_STRIPS]) {
 		const float angle = (*angles)[i];
 
 		for (int j = 0; j < NUM_LEDS_PER_STRIP; j++) {
+			// reverse j if strip direction is inward
+			if (STRIP_DIRECTIONS[i] == INWARD)
+				j = NUM_LEDS_PER_STRIP - 1 - j;
+
 			const int x = NUM_LEDS_PER_STRIP * 0.5f + cos(angle) * j * 0.5f;
 			const int y = NUM_LEDS_PER_STRIP * 0.5f + sin(angle) * j * 0.5f;
 			const int gif_index = (x + y * NUM_LEDS_PER_STRIP) * NUM_CHANNELS;
