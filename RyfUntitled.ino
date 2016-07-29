@@ -4,7 +4,9 @@
 //#include "robot.gif.h"
 //#include "cookiemonster.gif.h"
 //#include "ninja.gif.h"
-#include "mew.gif.h"
+//#include "mew.gif.h"
+#include "N.gif.h"
+//#include "N2.gif.h"
 
 #include <avr/pgmspace.h>
 
