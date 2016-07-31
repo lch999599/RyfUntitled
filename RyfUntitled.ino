@@ -12,13 +12,25 @@
 
 #define hall_input_pin 4
 
-#include <FastGPIO.h>
-#define APA102_USE_FAST_GPIO
-#include <APA102.h>
+#include <FastLED.h>
 
 #include <SoftwareSerial.h> //for communicating with the ESP8266
 
+//#define HIRES
 #define motor_pin A0
+
+#define LEN(x) (sizeof(x) / sizeof(x[0]))
+
+// Strip directions
+static const int OUTWARD = 0;
+static const int INWARD = 0;
+
+// Settings
+static const float OFFSET_ANGLE       = 0;
+static const int   NUM_STRIPS         = 3;
+static const int   NUM_LEDS_PER_STRIP = 24;
+static const int   BRIGHTNESS         = 32; // 0 - 255
+static const int   STRIP_DIRECTIONS[NUM_STRIPS] = { OUTWARD, INWARD, OUTWARD };
 
 //Hall sensor
 int counter; //for testing only
@@ -37,17 +49,12 @@ isTriggered; //user has triggered installation
 float angle; //real time angle of the wheel led line wrt to 0 position
 
 //LEDs
-const uint8_t dataPin = 10;
-const uint8_t clockPin = 11;
-
-// Create an object for writing to the LED strip.
-APA102<dataPin, clockPin> ledStrip;
+const uint8_t DATA_PIN = 10;
+const uint8_t CLOCK_PIN = 11;
+CRGB leds[NUM_LEDS_PER_STRIP * NUM_STRIPS];
 
 // Set the number of LEDs to control.
 const uint16_t ledCount = 24; //24 leds need about 1A
-
-// Create a buffer for holding the colors (3 bytes per color).
-rgb_color colors[ledCount];
 
 SoftwareSerial mySerial(8, 9); //RX, TX
 
@@ -139,6 +146,18 @@ void calc_angle() {
     }
 }
 
+void reset() {
+/*
+ * resets upon idling
+ */
+  isIdle = true;
+  timeInitialised = 0;
+  isInit = false;
+  isTriggered = false;
+  rpm = 0; //only for user bicyle
+  oneRevTimeInterval = 0;
+}
+
 void check_idle() { 
  /*
   * check whether user has stopped pedalling
@@ -169,47 +188,35 @@ void check_trigger() {
   }
 }
 
-void reset() {
-/*
- * resets upon idling
- */
-  isIdle = true;
-  timeInitialised = 0;
-  isInit = false;
-  isTriggered = false;
-  rpm = 0; //only for user bicyle
-  oneRevTimeInterval = 0;
-}
-
 void init_LEDs() {
+  FastLED.addLeds<APA102, DATA_PIN, CLOCK_PIN, RGB>(leds, NUM_LEDS_PER_STRIP * NUM_STRIPS);
+  FastLED.setBrightness(BRIGHTNESS);
 /*
  * turns off LEDs upon power up
  */
-  rgb_color initialColors[72];
-
-  for (uint16_t i = 0; i < 72; i++) {
-    initialColors[i].red = 0;
-    initialColors[i].green = 0;
-    initialColors[i].blue = 0;
+  for (uint16_t i = 0; i < NUM_LEDS_PER_STRIP * NUM_STRIPS; i++) {
+    leds[i].red = 0;
+    leds[i].green = 0;
+    leds[i].blue = 0;
   }
 
-  ledStrip.write(initialColors, 72, 0); //turns them off
+  FastLED.show(); //turns them off
 
   for (uint16_t i = 0; i < ledCount; i++) { //initialises to default white color
-    colors[i].red = 255;
-    colors[i].green = 255;
-    colors[i].blue = 255;
+    leds[i].red = 255;
+    leds[i].green = 255;
+    leds[i].blue = 255;
   }
 }
 
 
-void update_leds_test() { 
+void update_leds_test() {
 /*
  * test for brightness adjusting according to RPM
  */
   int brightLevel = map(rpm, 0, 500, 0, 31);
 
-  ledStrip.write(colors, ledCount, brightLevel);
+  FastLED.show();
 }
 
 
@@ -217,7 +224,13 @@ void update_leds() {
 /*
  * light painting based on Jacky's algorithm
  */
-    draw_line(angle, ledCount, 16); //half brightness, 24 LEDs
+     const float ANGLE_BETWEEN_STRIPS = 2 * PI / NUM_STRIPS;
+    float angles[NUM_STRIPS];
+
+    for (int i = 0; i < NUM_STRIPS; i++)
+        angles[NUM_STRIPS] = angle + i * ANGLE_BETWEEN_STRIPS;
+
+    draw_line(&angles);
 }
 
 
@@ -247,22 +260,56 @@ void update_motor() {
     }
 }
 
-void draw_line(float angle, int num_leds, int brightness) {
+
+#if defined(HIRES)
+
+void draw_line(float (*angles)[NUM_STRIPS]) {
+    static const int NUM_CHANNELS = 3;
+
+    for (int i = 0; i < LEN(angles); i++) {
+        const int angle = (int) (*angles)[i];
+
+        for (int j = 0; j < NUM_LEDS_PER_STRIP; j++) {
+            const int gif_index = (angle * NUM_LEDS_PER_STRIP + j) * NUM_CHANNELS;
+
+            leds[j].red   = pgm_read_byte_near(&gif[gif_index + 0]);
+            leds[j].green = pgm_read_byte_near(&gif[gif_index + 1]);
+            leds[j].blue  = pgm_read_byte_near(&gif[gif_index + 2]);
+        }
+    }
+
+    FastLED.show();
+}
+
+#else
+
+void draw_line(float (*angles)[NUM_STRIPS]) {
 /*
  * light painting based on one strip and the rpm 
  */
     static const int NUM_CHANNELS = 3;
-    rgb_color leds[num_leds];
-  
-    for (int i = 0; i < num_leds; i++) {
-        int x = num_leds * 0.5f + cos(angle) * i * 0.5f;
-        int y = num_leds * 0.5f + sin(angle) * i * 0.5f;
-        int gif_index = (x + y * num_leds) * NUM_CHANNELS;
-        leds[i].red   = pgm_read_byte_near(&gif[gif_index + 0]);
-        leds[i].green = pgm_read_byte_near(&gif[gif_index + 1]);
-        leds[i].blue  = pgm_read_byte_near(&gif[gif_index + 2]);
-        //memcpy(&leds[led_index], &gif[gif_index], NUM_CHANNELS);
+
+    for (int i = 0; i < LEN(angles); i++) {
+        const float angle = (*angles)[i];
+
+        for (int j = 0; j < NUM_LEDS_PER_STRIP; j++) {
+            // reverse j if strip direction is inward
+            if (STRIP_DIRECTIONS[i] == INWARD)
+                j = NUM_LEDS_PER_STRIP - 1 - j;
+
+            const int x = NUM_LEDS_PER_STRIP * 0.5f + cos(angle) * j * 0.5f;
+            const int y = NUM_LEDS_PER_STRIP * 0.5f + sin(angle) * j * 0.5f;
+            const int gif_index = (x + y * NUM_LEDS_PER_STRIP) * NUM_CHANNELS;
+
+            leds[j].red   = pgm_read_byte_near(&gif[gif_index + 0]);
+            leds[j].green = pgm_read_byte_near(&gif[gif_index + 1]);
+            leds[j].blue  = pgm_read_byte_near(&gif[gif_index + 2]);
+        }
     }
 
-    ledStrip.write(leds, num_leds, brightness);
+    FastLED.show();
 }
+
+#endif
+Contact GitHub API Training Shop Blog About
+
