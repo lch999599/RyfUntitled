@@ -1,23 +1,19 @@
-//#include "rainbow.gif.h"
+#include "rainbow.gif.h"
 //#include "gear1.gif.h"
 //#include "gear2.gif.h"
 //#include "robot.gif.h"
 //#include "cookiemonster.gif.h"
 //#include "ninja.gif.h"
 //#include "mew.gif.h"
-#include "N.gif.h"
+//#include "N.gif.h"
 //#include "N2.gif.h"
 
-#include <avr/pgmspace.h>
-
-#define hall_input_pin 4
+#define hall_input_pin 14
+#define motor_pin 4
 
 #include <FastLED.h>
 
-#include <SoftwareSerial.h> //for communicating with the ESP8266
-
 //#define HIRES
-#define motor_pin A0
 
 #define LEN(x) (sizeof(x) / sizeof(x[0]))
 
@@ -49,23 +45,12 @@ isTriggered; //user has triggered installation
 float angle; //real time angle of the wheel led line wrt to 0 position
 
 //LEDs
-const uint8_t DATA_PIN = 10;
-const uint8_t CLOCK_PIN = 11;
+const uint8_t DATA_PIN = 12;
+const uint8_t CLOCK_PIN = 13;
 CRGB leds[NUM_LEDS_PER_STRIP * NUM_STRIPS];
 
-// Set the number of LEDs to control.
-const uint16_t ledCount = 24; //24 leds need about 1A
-
-SoftwareSerial mySerial(8, 9); //RX, TX
-
 void setup() {
-
-  Serial.begin(9600);
-  while (!Serial) {
-    ; //wait for USB serial to connect first
-  }
-  
-  mySerial.begin(115200); //115200 for the ESP8266
+  Serial.begin(115200);
   
   pinMode(hall_input_pin, INPUT_PULLUP);
 
@@ -76,24 +61,20 @@ void setup() {
 
 void loop() {
 
-  if (mySerial.available()) {
-    Serial.write(mySerial.read());
-  }
-  if (Serial.available()) {
-    mySerial.write(Serial.read());
-  }
-
   currVal = digitalRead(hall_input_pin);
+
+//    Serial.print("hall pin: ");
+//  Serial.println(currVal);
 
   if (currVal == LOW && prevVal == HIGH) { //positive hall detection
     
-//    counter++;
+    counter++;
 
     angle = 0; //assuming the sensor is placed at clock position 3pm, else just do an offset
 
     calc_rpm();
-    //        Serial.print("counter: ");
-    //        Serial.println(counter);
+            Serial.print("counter: ");
+            Serial.println(counter);
   }
 
   calc_angle();
@@ -108,6 +89,8 @@ void loop() {
   //update_leds_test();
 
   update_motor();
+
+  //delay(1);
 }
 
 void calc_rpm() { 
@@ -202,7 +185,7 @@ void init_LEDs() {
 
   FastLED.show(); //turns them off
 
-  for (uint16_t i = 0; i < ledCount; i++) { //initialises to default white color
+  for (uint16_t i = 0; i < NUM_LEDS_PER_STRIP * NUM_STRIPS; i++) { //initialises to default white color
     leds[i].red = 255;
     leds[i].green = 255;
     leds[i].blue = 255;
@@ -228,7 +211,7 @@ void update_leds() {
     float angles[NUM_STRIPS];
 
     for (int i = 0; i < NUM_STRIPS; i++)
-        angles[NUM_STRIPS] = angle + i * ANGLE_BETWEEN_STRIPS;
+        angles[i] = angle + i * ANGLE_BETWEEN_STRIPS;
 
     draw_line(&angles);
 }
@@ -266,15 +249,20 @@ void update_motor() {
 void draw_line(float (*angles)[NUM_STRIPS]) {
     static const int NUM_CHANNELS = 3;
 
-    for (int i = 0; i < LEN(angles); i++) {
+    for (int i = 0; i < LEN(*angles); i++) {
         const int angle = (int) (*angles)[i];
 
         for (int j = 0; j < NUM_LEDS_PER_STRIP; j++) {
-            const int gif_index = (angle * NUM_LEDS_PER_STRIP + j) * NUM_CHANNELS;
+            int k = j;
+            
+            if (STRIP_DIRECTIONS[i] == INWARD)
+                k = NUM_LEDS_PER_STRIP - 1 - j;
+                
+            const int gif_index = (angle * NUM_LEDS_PER_STRIP + k) * NUM_CHANNELS;
 
-            leds[j].red   = pgm_read_byte_near(&gif[gif_index + 0]);
-            leds[j].green = pgm_read_byte_near(&gif[gif_index + 1]);
-            leds[j].blue  = pgm_read_byte_near(&gif[gif_index + 2]);
+            leds[i * NUM_LEDS_PER_STRIP + k].red   = pgm_read_byte_near(&gif[gif_index + 0]);
+            leds[i * NUM_LEDS_PER_STRIP + k].green = pgm_read_byte_near(&gif[gif_index + 1]);
+            leds[i * NUM_LEDS_PER_STRIP + k].blue  = pgm_read_byte_near(&gif[gif_index + 2]);
         }
     }
 
@@ -284,26 +272,24 @@ void draw_line(float (*angles)[NUM_STRIPS]) {
 #else
 
 void draw_line(float (*angles)[NUM_STRIPS]) {
-/*
- * light painting based on one strip and the rpm 
- */
     static const int NUM_CHANNELS = 3;
 
-    for (int i = 0; i < LEN(angles); i++) {
+    for (int i = 0; i < LEN(*angles); i++) {
         const float angle = (*angles)[i];
 
         for (int j = 0; j < NUM_LEDS_PER_STRIP; j++) {
-            // reverse j if strip direction is inward
+            int k = j;
+            
             if (STRIP_DIRECTIONS[i] == INWARD)
-                j = NUM_LEDS_PER_STRIP - 1 - j;
+                k = NUM_LEDS_PER_STRIP - 1 - j;
 
-            const int x = NUM_LEDS_PER_STRIP * 0.5f + cos(angle) * j * 0.5f;
-            const int y = NUM_LEDS_PER_STRIP * 0.5f + sin(angle) * j * 0.5f;
+            const int x = (NUM_LEDS_PER_STRIP + cos(angle) * k) * 0.5f;
+            const int y = (NUM_LEDS_PER_STRIP + sin(angle) * k) * 0.5f;
             const int gif_index = (x + y * NUM_LEDS_PER_STRIP) * NUM_CHANNELS;
 
-            leds[j].red   = pgm_read_byte_near(&gif[gif_index + 0]);
-            leds[j].green = pgm_read_byte_near(&gif[gif_index + 1]);
-            leds[j].blue  = pgm_read_byte_near(&gif[gif_index + 2]);
+            leds[i * NUM_LEDS_PER_STRIP + k].red   = pgm_read_byte_near(&gif[gif_index + 0]);
+            leds[i * NUM_LEDS_PER_STRIP + k].green = pgm_read_byte_near(&gif[gif_index + 1]);
+            leds[i * NUM_LEDS_PER_STRIP + k].blue  = pgm_read_byte_near(&gif[gif_index + 2]);
         }
     }
 
@@ -311,5 +297,3 @@ void draw_line(float (*angles)[NUM_STRIPS]) {
 }
 
 #endif
-Contact GitHub API Training Shop Blog About
-
