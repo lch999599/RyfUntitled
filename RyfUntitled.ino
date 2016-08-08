@@ -238,7 +238,7 @@ void update_leds() {
     int retryCount = 3;
     int cb;
     
-    requestPixelsForAngle(angle);
+    requestPixelsForAngle(OFFSET_ANGLE + angle);
     
     while (retryCount--) {
         int cb = udp.parsePacket();
