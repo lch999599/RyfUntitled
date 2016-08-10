@@ -1,22 +1,38 @@
-//#include "rainbow.gif.h"
+#include "rainbow.gif.h"
 //#include "gear1.gif.h"
 //#include "gear2.gif.h"
 //#include "robot.gif.h"
-//#include "cookiemonster.gif.h"
+//include "cookiemonster.gif.h"
 //#include "ninja.gif.h"
-#include "mew.gif.h"
+//include "mew.gif.h"
 //#include "N.gif.h"
 //#include "N2.gif.h"
+//#include "stickman.gif.h"
+//#include "stickman2.gif.h"
+//#include "stickman3.gif.h"
+//#include "enlighted.gif.h"
+//#include "enlighted2.gif.h"
 
+//pins
 #define hall_input_pin 14
 
-#define motor_pin 16
+//cannot use pin 16 cos no PWM
+#define motor_pin (15)
 
+//user settings
+//whether to stream webcam data or the gif file
+//#define WIFI 
+
+//whether 360 hi res sampling or grid sampling
+//#define HIRES
+
+//libraries
+#ifdef WIFI
 #include <ESP8266WiFi.h>
 #include <WiFiUdp.h>
-#include <FastLED.h>
+#endif
 
-//#define HIRES //whether 360 hi res sampling or grid sampling
+#include <FastLED.h>
 
 #define LEN(x) (sizeof(x) / sizeof(x[0]))
 
@@ -25,13 +41,22 @@ static const int INWARD = 0;
 
 // Settings
 static const float OFFSET_ANGLE       = 0;
-static const int   NUM_STRIPS         = 3;
+static const int   NUM_CHANNELS       = 3;
+static const int   NUM_STRIPS         = 4;
 static const int   NUM_LEDS_PER_STRIP = 24;
-static const int   BRIGHTNESS         = 16; // 0 - 255
-static const int   STRIP_DIRECTIONS[NUM_STRIPS] = { OUTWARD, INWARD, OUTWARD };
+static const int   BRIGHTNESS         = 64; // 0 - 255
+static const int   STRIP_DIRECTIONS[NUM_STRIPS] = { OUTWARD, OUTWARD, OUTWARD, OUTWARD };
+
+#ifdef WIFI
+IPAddress serverIP(192, 168, 43, 116); //Android AP
+WiFiUDP udp;
 static const char _SSID[] = "AndroidAP";
 static const char PASS[] = "hyxa7911";
-static const int LOCAL_PORT = 7776;
+static const int LOCAL_PORT = 2390;
+const int PACKET_SIZE = NUM_LEDS_PER_STRIP * NUM_STRIPS * NUM_CHANNELS;
+byte packetBuffer[PACKET_SIZE];
+#endif
+
 static const int SERVER_PORT = 7777;
 
 const long TRIGGERINTERVAL = 10000; //time needed to operate the bicycle to trigger the installation
@@ -41,6 +66,7 @@ int IDLEINTERVAL = 5000; //if timeInterval takes more than this amount of time, 
 int counter; //for testing only
 long prevReadTime, //previous hall detection time
      timeInitialised, //time since first hall detection, i.e. user started pedalling
+     isTriggeredTime,//time when triggered
      oneRevTimeInterval, //interval between hall detections, i.e. one revolution
      timeInterval, //time since prevReadTime for calculating angle based on rpm
      progStartTime; //time since power on
@@ -57,9 +83,6 @@ const uint8_t DATA_PIN = 12; //green
 const uint8_t CLOCK_PIN = 13; //yellow
 CRGB leds[NUM_LEDS_PER_STRIP * NUM_STRIPS];
 
-WiFiUDP udp;
-IPAddress serverIP(192, 168, 1, 117);
-
 void setup() {
     
   Serial.begin(115200);
@@ -70,6 +93,10 @@ void setup() {
   init_LEDs(); //turn off and initialise colours
 
   init_motor_cruise(); //set to cruise mode, takes ~12 seconds
+
+  #ifdef WIFI
+  init_wifi();
+  #endif
 }
 
 void loop() {
@@ -101,8 +128,7 @@ void loop() {
 
   update_motor();
 
-  delay(1); //prevent program from crashing
-
+//  delay(1); //prevent program from crashing
 }
 
 void calc_rpm() {
@@ -152,6 +178,7 @@ void reset() {
   rpm = 0; //only for user bicyle
   oneRevTimeInterval = 0;
   hasActivatedMotor = false;
+  counter = 0;
   
   init_motor_cruise(); //set motor to cruise mode 
 } 
@@ -180,9 +207,8 @@ void check_trigger() {
   if (!isIdle && isInit && !isTriggered && millis() - timeInitialised > TRIGGERINTERVAL) {
 
     isTriggered = true;
+    isTriggeredTime = millis();
     Serial.println("TRIGGERED!!!!!!!!!!");
-
-    reset();
   }
 }
 
@@ -223,34 +249,53 @@ void update_leds() {
   /*
      light painting based on Jacky's algorithm
   */
-  /*
-  const float ANGLE_BETWEEN_STRIPS = 2 * PI / NUM_STRIPS;
-    
-  float angles[NUM_STRIPS];
 
-  for (int i = 0; i < NUM_STRIPS; i++)
-    angles[i] = angle + i * ANGLE_BETWEEN_STRIPS;
+#ifdef WIFI
 
-  draw_line(&angles);
-  */
+  request_pov_pixels(povServerIP, OFFSET_ANGLE + angle);
+    
+    int cb = udp.parsePacket();
 
-  
-    int retryCount = 3;
-    int cb;
+    if (!cb) {
+        Serial.println("no packet yet");
+    } else {
+        Serial.print("packet received, length=");
+        Serial.println(cb);
+        // We've received a packet, read the data from it
+        udp.read((unsigned char *) leds, sizeof(leds)); // read the packet into the buffer
+    }
     
-    requestPixelsForAngle(OFFSET_ANGLE + angle);
-    
-    while (retryCount--) {
-        int cb = udp.parsePacket();
-        if (cb)
-            break;
+  // reverse the pixels if the direction is INWARD
+    for (int i = 0; i < NUM_STRIPS; i++) {
+        if (STRIP_DIRECTIONS[i] != INWARD)
+            continue;
+            
+        for (int j = 0; j < NUM_LEDS_PER_STRIP; j++) {
+            for (int k = 0; k < NUM_CHANNELS; k++) {
+                const int index = i * NUM_LEDS_PER_STRIP + j;
+                const int reversed_index = (i + 1) * NUM_LEDS_PER_STRIP - j - 1;
+                char tmp[NUM_CHANNELS];
+
+                memcpy(tmp, &leds[index], sizeof(tmp));
+                memcpy(&leds[index], &leds[reversed_index], sizeof(tmp));
+                memcpy(&leds[reversed_index], tmp, sizeof(tmp));
+            }
+        }
     }
 
-    // Read pixels data and update LEDs
-    Serial.print("packet received, length=");
-    Serial.println(cb);
-    udp.read((uint8_t *) leds, sizeof(leds));
     FastLED.show();
+
+#else
+    const float ANGLE_BETWEEN_STRIPS = 2 * PI / NUM_STRIPS;
+    
+    float angles[NUM_STRIPS];
+    
+    for (int i = 0; i < NUM_STRIPS; i++)
+        angles[i] = angle + i * ANGLE_BETWEEN_STRIPS;
+    
+    draw_line(&angles);
+    
+#endif
 }
 
 
@@ -260,7 +305,7 @@ void init_motor_cruise() {
      voltage at the base of the npn STS8050 transistor and the output voltage at the collector. 
 
      Motor cruise control startup sequence: 2V 1sec, 3V 10sec, then 0V to activate cruise mode
-     Motor max speed: 5V consistent
+     Motor max speed: 5V consistent. TBC: it seems cruise mode does not automatically kick in. 
 
      This function will freeze the program for 11 seconds
   */
@@ -268,37 +313,13 @@ void init_motor_cruise() {
 
   while ( millis() - progStartTime < 1000 ) {
     analogWrite(motor_pin, 614); //2V
-    delay(10);
+    delay(100);
   }
   while ( millis() - progStartTime < 11000 ) {
     analogWrite(motor_pin, 409); //3V
-    delay(10);
+    delay(100);
   }
-  analogWrite(motor_pin, 1023); //0V, turn off so it remains at cruise mode
-  delay(10);
-}
-
-void init_wifi() {
-    Serial.begin(115200);
-
-    Serial.print("Connecting to ");
-    Serial.println(_SSID);
-    WiFi.begin(_SSID, PASS);
-    
-    while (WiFi.status() != WL_CONNECTED) {
-        delay(500);
-        Serial.print(".");
-    }
-    Serial.println("");
-    
-    Serial.println("WiFi connected");
-    Serial.println("IP address: ");
-    Serial.println(WiFi.localIP());
-
-    Serial.println("Starting UDP");
-    udp.begin(LOCAL_PORT);
-    Serial.print("Local port: ");
-    Serial.println(udp.localPort());
+  delay(100);
 }
 
 void update_motor() {
@@ -308,9 +329,37 @@ void update_motor() {
   if (isTriggered && !isIdle && isInit && !hasActivatedMotor) { 
     analogWrite(motor_pin, 0); //5V full speed
     hasActivatedMotor = true;
+    delay(20);
   } 
 }
 
+#ifdef WIFI
+void init_wifi() {
+  //Serial.begin(115200);
+  Serial.println();
+  Serial.println();
+
+  // We start by connecting to a WiFi network
+  Serial.print("Connecting to ");
+  Serial.println(ssid);
+  WiFi.begin(ssid, pass);
+
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("");
+
+  Serial.println("WiFi connected");
+  Serial.println("IP address: ");
+  Serial.println(WiFi.localIP());
+
+  Serial.println("Starting UDP");
+  udp.begin(localPort);
+  Serial.print("Local port: ");
+  Serial.println(udp.localPort());
+}
+#endif
 
 #if defined(HIRES)
 
@@ -340,8 +389,6 @@ void draw_line(float (*angles)[NUM_STRIPS]) {
 #else
 
 void draw_line(float (*angles)[NUM_STRIPS]) {
-  static const int NUM_CHANNELS = 3;
-
   for (int i = 0; i < LEN(*angles); i++) {
     const float angle = (*angles)[i];
 
@@ -366,11 +413,12 @@ void draw_line(float (*angles)[NUM_STRIPS]) {
 
 #endif
 
-void requestPixelsForAngle(float angle)
+#ifdef WIFI
+unsigned long request_pov_pixels(IPAddress& address, float angle)
 {
-    udp.beginPacket(serverIP, SERVER_PORT);
+    udp.beginPacket(address, SERVER_PORT);
     udp.write((char *) &angle, sizeof(angle));
     udp.endPacket();
 }
-
+#endif
 
