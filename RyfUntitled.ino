@@ -2,7 +2,7 @@
 //#include "gear1.gif.h"
 //#include "gear2.gif.h"
 //#include "robot.gif.h"
-//include "cookiemonster.gif.h"
+//#include "cookiemonster.gif.h"
 //#include "ninja.gif.h"
 //include "mew.gif.h"
 //#include "N.gif.h"
@@ -12,6 +12,7 @@
 //#include "stickman3.gif.h"
 //#include "enlighted.gif.h"
 //#include "enlighted2.gif.h"
+//#include "symmgear.gif.h"
 
 //pins
 #define hall_input_pin 14
@@ -37,10 +38,10 @@
 #define LEN(x) (sizeof(x) / sizeof(x[0]))
 
 static const int OUTWARD = 0; // Strip directions
-static const int INWARD = 0;
+static const int INWARD = 1;
 
 // Settings
-static const float OFFSET_ANGLE       = 0;
+static const float OFFSET_ANGLE       = 0.7* 2*PI;
 static const int   NUM_CHANNELS       = 3;
 static const int   NUM_STRIPS         = 4;
 static const int   NUM_LEDS_PER_STRIP = 24;
@@ -52,7 +53,7 @@ IPAddress serverIP(192, 168, 43, 116); //Android AP
 WiFiUDP udp;
 static const char _SSID[] = "AndroidAP";
 static const char PASS[] = "hyxa7911";
-static const int LOCAL_PORT = 2390;
+static const int LOCAL_PORT = 2390;             
 const int PACKET_SIZE = NUM_LEDS_PER_STRIP * NUM_STRIPS * NUM_CHANNELS;
 byte packetBuffer[PACKET_SIZE];
 #endif
@@ -131,294 +132,4 @@ void loop() {
 //  delay(1); //prevent program from crashing
 }
 
-void calc_rpm() {
-  /*
-     calculates the rpm based on subsequent hall detections
-  */
-
-  if (!isInit) {
-
-    isInit = true;
-
-    prevReadTime = millis();
-    timeInitialised = millis();
-
-  } else { //already initialised and updates rpm upon a subsequent detection
-
-    oneRevTimeInterval = millis() - prevReadTime; //time for one revolution
-
-    prevReadTime = millis(); //updated
-
-    rpm = 60000 / oneRevTimeInterval;
-    Serial.print("RPM: ");
-    Serial.println(rpm);
-  }
-}
-
-void calc_angle() {
-  /*
-         calc the real time angle position of the light strip wrt to the 0 position and based on rpm
-  */
-  if (isInit) {
-
-    timeInterval = millis() - prevReadTime; 
-
-    angle = ( (float)timeInterval / oneRevTimeInterval ) * 2 * PI; //radians
-  }
-}
-
-void reset() {
-  /*
-     resets upon idling
-  */
-  isIdle = true;
-  timeInitialised = 0;
-  isInit = false;
-  isTriggered = false;
-  rpm = 0; //only for user bicyle
-  oneRevTimeInterval = 0;
-  hasActivatedMotor = false;
-  counter = 0;
-  
-  init_motor_cruise(); //set motor to cruise mode 
-} 
-
-void check_idle() {
-  /*
-     check whether user has stopped pedalling
-  */
-
-  if (millis() - prevReadTime > IDLEINTERVAL && isInit) { //takes more than this time for one revolution
-
-    Serial.println("IDLE!!!!");
-    reset();
-    
-  } else {
-
-    isIdle = false; //something is happening
-  }
-}
-
-void check_trigger() {
-  /*
-     check whether to trigger installation
-  */
-
-  if (!isIdle && isInit && !isTriggered && millis() - timeInitialised > TRIGGERINTERVAL) {
-
-    isTriggered = true;
-    isTriggeredTime = millis();
-    Serial.println("TRIGGERED!!!!!!!!!!");
-  }
-}
-
-void init_LEDs() {
-  /*
-     turns off LEDs upon power up
-  */
-  FastLED.addLeds<APA102, DATA_PIN, CLOCK_PIN, RGB>(leds, NUM_LEDS_PER_STRIP * NUM_STRIPS);
-  FastLED.setBrightness(BRIGHTNESS);
-  
-  for (uint16_t i = 0; i < NUM_LEDS_PER_STRIP * NUM_STRIPS; i++) {
-    leds[i].red = 0;
-    leds[i].green = 0;
-    leds[i].blue = 0;
-  }
-
-  FastLED.show(); //turns them off
-
-  for (uint16_t i = 0; i < NUM_LEDS_PER_STRIP * NUM_STRIPS; i++) { //initialises to default white color
-    leds[i].red = 255;
-    leds[i].green = 255;
-    leds[i].blue = 255;
-  }
-}
-
-
-void update_leds_test() {
-  /*
-     test for brightness adjusting according to RPM
-  */
-  int brightLevel = map(rpm, 0, 500, 0, 31);
-
-  FastLED.show();
-}
-
-
-void update_leds() {
-  /*
-     light painting based on Jacky's algorithm
-  */
-
-#ifdef WIFI
-
-  request_pov_pixels(povServerIP, OFFSET_ANGLE + angle);
-    
-    int cb = udp.parsePacket();
-
-    if (!cb) {
-        Serial.println("no packet yet");
-    } else {
-        Serial.print("packet received, length=");
-        Serial.println(cb);
-        // We've received a packet, read the data from it
-        udp.read((unsigned char *) leds, sizeof(leds)); // read the packet into the buffer
-    }
-    
-  // reverse the pixels if the direction is INWARD
-    for (int i = 0; i < NUM_STRIPS; i++) {
-        if (STRIP_DIRECTIONS[i] != INWARD)
-            continue;
-            
-        for (int j = 0; j < NUM_LEDS_PER_STRIP; j++) {
-            for (int k = 0; k < NUM_CHANNELS; k++) {
-                const int index = i * NUM_LEDS_PER_STRIP + j;
-                const int reversed_index = (i + 1) * NUM_LEDS_PER_STRIP - j - 1;
-                char tmp[NUM_CHANNELS];
-
-                memcpy(tmp, &leds[index], sizeof(tmp));
-                memcpy(&leds[index], &leds[reversed_index], sizeof(tmp));
-                memcpy(&leds[reversed_index], tmp, sizeof(tmp));
-            }
-        }
-    }
-
-    FastLED.show();
-
-#else
-    const float ANGLE_BETWEEN_STRIPS = 2 * PI / NUM_STRIPS;
-    
-    float angles[NUM_STRIPS];
-    
-    for (int i = 0; i < NUM_STRIPS; i++)
-        angles[i] = angle + i * ANGLE_BETWEEN_STRIPS;
-    
-    draw_line(&angles);
-    
-#endif
-}
-
-
-void init_motor_cruise() {
-  /*
-     12 second start up routine for motor controller. Note the inverse relationship between the 
-     voltage at the base of the npn STS8050 transistor and the output voltage at the collector. 
-
-     Motor cruise control startup sequence: 2V 1sec, 3V 10sec, then 0V to activate cruise mode
-     Motor max speed: 5V consistent. TBC: it seems cruise mode does not automatically kick in. 
-
-     This function will freeze the program for 11 seconds
-  */
-  progStartTime = millis();
-
-  while ( millis() - progStartTime < 1000 ) {
-    analogWrite(motor_pin, 614); //2V
-    delay(100);
-  }
-  while ( millis() - progStartTime < 11000 ) {
-    analogWrite(motor_pin, 409); //3V
-    delay(100);
-  }
-  delay(100);
-}
-
-void update_motor() {
-  /*
-     tells motor whether to go faster or not
-  */
-  if (isTriggered && !isIdle && isInit && !hasActivatedMotor) { 
-    analogWrite(motor_pin, 0); //5V full speed
-    hasActivatedMotor = true;
-    delay(20);
-  } 
-}
-
-#ifdef WIFI
-void init_wifi() {
-  //Serial.begin(115200);
-  Serial.println();
-  Serial.println();
-
-  // We start by connecting to a WiFi network
-  Serial.print("Connecting to ");
-  Serial.println(ssid);
-  WiFi.begin(ssid, pass);
-
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-  }
-  Serial.println("");
-
-  Serial.println("WiFi connected");
-  Serial.println("IP address: ");
-  Serial.println(WiFi.localIP());
-
-  Serial.println("Starting UDP");
-  udp.begin(localPort);
-  Serial.print("Local port: ");
-  Serial.println(udp.localPort());
-}
-#endif
-
-#if defined(HIRES)
-
-void draw_line(float (*angles)[NUM_STRIPS]) {
-  static const int NUM_CHANNELS = 3;
-
-  for (int i = 0; i < LEN(*angles); i++) {
-    const int angle = (int) (*angles)[i];
-
-    for (int j = 0; j < NUM_LEDS_PER_STRIP; j++) {
-      int k = j;
-
-      if (STRIP_DIRECTIONS[i] == INWARD)
-        k = NUM_LEDS_PER_STRIP - 1 - j;
-
-      const int gif_index = (angle * NUM_LEDS_PER_STRIP + k) * NUM_CHANNELS;
-
-      leds[i * NUM_LEDS_PER_STRIP + k].red   = pgm_read_byte_near(&gif[gif_index + 0]);
-      leds[i * NUM_LEDS_PER_STRIP + k].green = pgm_read_byte_near(&gif[gif_index + 1]);
-      leds[i * NUM_LEDS_PER_STRIP + k].blue  = pgm_read_byte_near(&gif[gif_index + 2]);
-    }
-  }
-
-  FastLED.show();
-}
-
-#else
-
-void draw_line(float (*angles)[NUM_STRIPS]) {
-  for (int i = 0; i < LEN(*angles); i++) {
-    const float angle = (*angles)[i];
-
-    for (int j = 0; j < NUM_LEDS_PER_STRIP; j++) {
-      int k = j;
-
-      if (STRIP_DIRECTIONS[i] == INWARD)
-        k = NUM_LEDS_PER_STRIP - 1 - j;
-
-      const int x = (NUM_LEDS_PER_STRIP + cos(angle) * k) * 0.5f;
-      const int y = (NUM_LEDS_PER_STRIP + sin(angle) * k) * 0.5f;
-      const int gif_index = (x + y * NUM_LEDS_PER_STRIP) * NUM_CHANNELS;
-
-      leds[i * NUM_LEDS_PER_STRIP + k].red   = pgm_read_byte_near(&gif[gif_index + 0]);
-      leds[i * NUM_LEDS_PER_STRIP + k].green = pgm_read_byte_near(&gif[gif_index + 1]);
-      leds[i * NUM_LEDS_PER_STRIP + k].blue  = pgm_read_byte_near(&gif[gif_index + 2]);
-    }
-  }
-
-  FastLED.show();
-}
-
-#endif
-
-#ifdef WIFI
-unsigned long request_pov_pixels(IPAddress& address, float angle)
-{
-    udp.beginPacket(address, SERVER_PORT);
-    udp.write((char *) &angle, sizeof(angle));
-    udp.endPacket();
-}
-#endif
 
