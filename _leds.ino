@@ -2,7 +2,7 @@ void init_LEDs() {
   /*
      turns off LEDs upon power up
   */
-  FastLED.addLeds<APA102, DATA_PIN, CLOCK_PIN, RGB>(leds, NUM_LEDS_PER_STRIP * NUM_STRIPS);
+  FastLED.addLeds<APA102, DATA_PIN, CLOCK_PIN, BGR>(leds, NUM_LEDS_PER_STRIP * NUM_STRIPS);
   FastLED.setBrightness(BRIGHTNESS);
   
   for (uint16_t i = 0; i < NUM_LEDS_PER_STRIP * NUM_STRIPS; i++) {
@@ -35,7 +35,7 @@ void draw_line(float (*angles)[NUM_STRIPS]) {
   static const int NUM_CHANNELS = 3;
 
   for (int i = 0; i < LEN(*angles); i++) {
-    const int angle = (int) (*angles)[i];
+    const int angle = (int) (((*angles)[i] + OFFSET_ANGLE) / (2 * PI) * 360) % 360;
 
     for (int j = 0; j < NUM_LEDS_PER_STRIP; j++) {
       int k = j;
@@ -89,7 +89,7 @@ void update_leds() {
 
 #ifdef WIFI
 
-  request_pov_pixels(povServerIP, OFFSET_ANGLE + angle);
+  request_pov_pixels(serverIP, angle + OFFSET_ANGLE);
     
     int cb = udp.parsePacket();
 

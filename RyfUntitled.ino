@@ -1,10 +1,10 @@
-#include "rainbow.gif.h"
+//#include "rainbow.gif.h"
 //#include "gear1.gif.h"
 //#include "gear2.gif.h"
 //#include "robot.gif.h"
 //#include "cookiemonster.gif.h"
 //#include "ninja.gif.h"
-//include "mew.gif.h"
+//#include "mew.gif.h"
 //#include "N.gif.h"
 //#include "N2.gif.h"
 //#include "stickman.gif.h"
@@ -13,6 +13,9 @@
 //#include "enlighted.gif.h"
 //#include "enlighted2.gif.h"
 //#include "symmgear.gif.h"
+//#include "gear.gif.h"
+//#include "large_gear.gif.h"
+#include "END.gif.h"
 
 //pins
 #define hall_input_pin 14
@@ -25,7 +28,7 @@
 //#define WIFI 
 
 //whether 360 hi res sampling or grid sampling
-//#define HIRES
+#define HIRES
 
 //libraries
 #ifdef WIFI
@@ -41,7 +44,7 @@ static const int OUTWARD = 0; // Strip directions
 static const int INWARD = 1;
 
 // Settings
-static const float OFFSET_ANGLE       = 0.7* 2*PI;
+static const float OFFSET_ANGLE       = 0.7 * 2 * PI;
 static const int   NUM_CHANNELS       = 3;
 static const int   NUM_STRIPS         = 4;
 static const int   NUM_LEDS_PER_STRIP = 24;
@@ -91,7 +94,7 @@ void setup() {
   pinMode(hall_input_pin, INPUT_PULLUP);
   pinMode(motor_pin, OUTPUT);
 
-  init_LEDs(); //turn off and initialise colours
+    init_LEDs(); //turn off and initialise colours
 
   init_motor_cruise(); //set to cruise mode, takes ~12 seconds
 

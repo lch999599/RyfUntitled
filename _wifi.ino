@@ -6,8 +6,8 @@ void init_wifi() {
 
   // We start by connecting to a WiFi network
   Serial.print("Connecting to ");
-  Serial.println(ssid);
-  WiFi.begin(ssid, pass);
+  Serial.println(_SSID);
+  WiFi.begin(_SSID, PASS);
 
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
@@ -20,7 +20,7 @@ void init_wifi() {
   Serial.println(WiFi.localIP());
 
   Serial.println("Starting UDP");
-  udp.begin(localPort);
+  udp.begin(SERVER_PORT);
   Serial.print("Local port: ");
   Serial.println(udp.localPort());
 }
